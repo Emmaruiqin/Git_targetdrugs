@@ -50,20 +50,23 @@ def add_experiment_result(doc, persondata, wapp):
     drugorder = sort_by_drug(persondata['关联药物'].tolist())
     data_grouped = persondata.groupby(by='关联药物')
     rownum = 2
+    metaanalysislist = []
     for drugname in drugorder:
         evrygroup = data_grouped.get_group(drugname)
         minnum = len(evrygroup)
-        metaanalysis = meta_analysis(psdata=evrygroup, drugname=drugname)
+
+        if '靶向' in evrygroup['检测项目类型']:
+            metaanalysis_tar = meta_analysis_targetdrug()
+            metaanalysislist.append(metaanalysis_tar)
+        elif '化疗' in evrygroup['检测项目类型']:
+            metaanalysis_chemo = meta_analysis(psdata=evrygroup, drugname=drugname)
+            metaanalysislist.append(metaanalysis_chemo)
+
         if minnum >1:
             doc.Tables[1].Cell(rownum, 1).Select()      #合并第一列
             wapp.Selection.MoveDown(Unit=5, Count=minnum-1, Extend=1)
             wapp.Selection.Cells.Merge()
             doc.Tables[1].Cell(rownum, 1).Range.Text = drugname
-
-            # doc.Tables[1].Cell(rownum, 2).Select()   #合并第一列
-            # wapp.Selection.MoveDown(Unit=5, Count=minnum - 1, Extend=1)
-            # wapp.Selection.Cells.Merge()
-            # doc.Tables[1].Cell(rownum, 2).Range.Text = evrygroup['肿瘤'].tolist()[0]
 
             doc.Tables[1].Cell(rownum, 5).Select()  #合并最后一列，写入综合分析结果
             wapp.Selection.MoveDown(Unit=5, Count=minnum - 1, Extend=1)
@@ -84,7 +87,7 @@ def add_experiment_result(doc, persondata, wapp):
                 rownum +=1
     return doc
 
-def meta_analysis(psdata, drugname):
+def meta_analysis_chemo(psdata, drugname):
     resultanalysis = []
     drugtypelist = [i for i in set(psdata['药物类型'].tolist())]
     if len(drugtypelist) == 1:
@@ -167,7 +170,7 @@ def main(Expresultfiles):
             print('正在生成【%s_%s】的报告，请稍等！检测项目是：%s'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['检验目的名称']))
             copyfile(reporttemplate, reportname)
 
-            data_person = Expresultfile.parse(sheetname=str(eachsample))  # 读取每个人的检测结果
+            data_person = Expresultfile.parse(sheetname=str(eachsample))  # 解析每个人的检测结果
 
             w = win32com.client.Dispatch('Word.Application')
             w.Visible = 0
@@ -175,39 +178,29 @@ def main(Expresultfiles):
             doc = w.Documents.Open(FileName=reportname)
             doc = add_basic_informmation(doc=doc, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
 
-            personlist = []
-            for minproject in data_person.index.tolist():
-                pro_inform = backgroudfile[backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果']][
-                    backgroudfile['检测项目'] == data_person.loc[minproject, '项目名称']]
-                for mer in pro_inform.index.tolist():
-                    if data_person['癌种'].tolist()[0].strip() in pro_inform.loc[mer, :]['肿瘤']:
-                        personlist.append(pro_inform.loc[mer, :])
-                    else:
-                        pass
-                # personlist.append(pro_inform)
-            personinform = pd.concat(personlist, axis=1).T    #每个检测者的检测结果
+            personinform = extract_result(backgroudfile, data_person)
 
             for rownum in range(0,len(personinform)-1, 1):    #根据结果的行数增加表格中的行数
                 doc.Tables[1].Rows.Add()
 
-            for per_pro in data_person['项目名称'].tolist():
-                if per_pro not in personinform['检测项目'].tolist():
-                    print('该受试者的检测项目有缺失：%s' % per_pro)
-                    break
-            else:
-                doc = add_experiment_result(doc=doc, persondata=personinform, wapp=w)
-                if np.isnan(data_person['HE染色结果'][0]) == False:
-                    doc.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
-                        format(data_person['HE染色结果'][0], '.0%'))
+            # for per_pro in data_person['项目名称'].tolist():
+            #     if per_pro not in personinform['检测项目'].tolist():
+            #         print('该受试者的检测项目有缺失：%s' % per_pro)
+            #         break
+            # else:
+            doc = add_experiment_result(doc=doc, persondata=personinform, wapp=w)
+            if np.isnan(data_person['HE染色结果'][0]) == False:
+                doc.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
+                    format(data_person['HE染色结果'][0], '.0%'))
 
-                backgenelist = personinform['背景资料'].tolist()
-                subtabnum = 0
-                for tabnum in range(5, doc.Tables.Count):
-                    if doc.Tables[tabnum - subtabnum].Rows[2].Range.Text.split('\r')[0] not in backgenelist:
-                        doc.Tables[tabnum - subtabnum].Delete()
-                        subtabnum += 1
-                    else:
-                        pass
+            backgenelist = personinform['背景资料'].tolist()
+            subtabnum = 0
+            for tabnum in range(5, doc.Tables.Count):
+                if doc.Tables[tabnum - subtabnum].Rows[2].Range.Text.split('\r')[0] not in backgenelist:
+                    doc.Tables[tabnum - subtabnum].Delete()
+                    subtabnum += 1
+                else:
+                    pass
                 doc.SaveAs(reportname2, 17)
                 doc.Close()
 
@@ -234,6 +227,26 @@ def main(Expresultfiles):
                             doc2.Tables[3].Rows.Add()
                     doc2.SaveAs(reportname_B5_2, 17)
                     doc2.Close()
+
+
+def extract_result(backgroudfile, data_person):
+    personlist = []
+    for minproject in data_person.index.tolist():
+        # pro_inform = backgroudfile[backgroudfile['检测项目'] == data_person.loc[minproject, '项目名称']]
+        # [backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果']]  # 将每个检测样本的检测项目和结果对应的数据库中的信息提取出来,但是未区分肿瘤
+        pro_inform = backgroudfile[(backgroudfile['检测项目'] == data_person.loc[minproject, '项目名称']) &
+                                   (backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果'])]
+        target_cancer = data_person['靶向癌种'].tolist()[0].strip()     #靶向项目对应的癌种
+        chemo_cancer = data_person['靶向癌种'].tolist()[0].strip()      #化疗项目对应的癌种
+        for typename, group in pd.groupby(pro_inform, by='检测项目类型'):
+            if '靶向' in typename:
+                tar_re = group[group['癌种'].str.contains(target_cancer)]
+                personlist.append(tar_re)
+            elif '化疗' in typename:
+                chem_re = group[group['癌种'].str.contains(chemo_cancer)]
+                personlist.append(chem_re)
+    personinform = pd.concat(personlist, axis=1)  # 每个检测者的检测结果
+    return personinform
 
 
 if __name__ == '__main__':
