@@ -59,7 +59,7 @@ def add_experiment_result(doc, persondata, wapp):
             metaanalysis_tar = meta_analysis_targetdrug()
             metaanalysislist.append(metaanalysis_tar)
         elif '化疗' in evrygroup['检测项目类型']:
-            metaanalysis_chemo = meta_analysis(psdata=evrygroup, drugname=drugname)
+            metaanalysis_chemo = meta_analysis_chemo(psdata=evrygroup, drugname=drugname)
             metaanalysislist.append(metaanalysis_chemo)
 
         if minnum >1:
@@ -127,6 +127,40 @@ def meta_analysis_chemo(psdata, drugname):
                     mindict['毒副作用'] = '常规剂量下%s' % drugtypegroup['意义'].tolist()[0]
                 elif len(set(drugtypegroup['意义'].tolist())) >1:
                     mindict['毒副作用'] = '常规剂量下毒副作用风险相对增加'
+
+        if len(mindict.keys()) == 3:
+            newdes = mindict['药物治疗'] + mindict['毒副作用'] + '，' + mindict['补充']
+        elif len(mindict.keys()) == 2 and '毒副作用' in mindict.keys():
+            newdes = mindict['药物治疗'] + mindict['毒副作用'] + '。'
+        elif len(minldict.keys()) == 2 and '毒副作用' not in mindict.keys():
+            newdes = mindict['药物治疗'] + mindict['补充']
+
+        resultanalysis.append(newdes)
+    return resultanalysis
+
+def meta_analysis_targetdrug(psdata, drugname):
+    resultanalysis = []
+    if len(set(psdata['意义'].tolist())) > 1:
+        mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
+    elif len(set(psdata['意义'].tolist())) == 1:
+        mindescription = '该检测个体对%s药物治疗相对敏感。'
+    for drugtypename, drugtypegroup in psdata.groupby(by='药物类型'):
+        if len(set(drugtypegroup['意义'].tolist())) > 1:
+            if drugtypename == '药物治疗':
+                mindescription = '该检测个体对%s药物治疗敏感性降低，建议综合考虑毒副作用适当调整剂量使用。' % drugname.replace('/', '、')
+            elif drugtypename == '毒副作用':
+                mindescription = '该检测个体常规剂量下%s药物治疗毒副作用风险相对增加。' % drugname.replace('/', '、')
+
+        elif len(set(drugtypegroup['意义'].tolist())) == 1:
+            if drugtypename == '药物治疗' or drugtypename == '药物治疗和毒副作用':
+                if '敏感性降低' in drugtypegroup['意义'].tolist()[0]:
+                    mindescription = '该检测个体对%s相对不敏感。' % drugname.replace('/', '、')
+                else:
+                    mindescription = '该检测个体对%s%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
+            elif drugtypename == '毒副作用':
+                mindescription = '该检测个体常规剂量下%s药物治疗%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
+
+        resultanalysis.append(mindescription)
 
         if len(mindict.keys()) == 3:
             newdes = mindict['药物治疗'] + mindict['毒副作用'] + '，' + mindict['补充']
