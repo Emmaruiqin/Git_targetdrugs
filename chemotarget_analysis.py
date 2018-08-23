@@ -58,6 +58,7 @@ def add_experiment_result(doc, persondata, wapp):
         if '靶向' in evrygroup['检测项目类型']:
             metaanalysis_tar = meta_analysis_targetdrug()
             metaanalysislist.append(metaanalysis_tar)
+
         elif '化疗' in evrygroup['检测项目类型']:
             metaanalysis_chemo = meta_analysis_chemo(psdata=evrygroup, drugname=drugname)
             metaanalysislist.append(metaanalysis_chemo)
@@ -140,37 +141,42 @@ def meta_analysis_chemo(psdata, drugname):
 
 def meta_analysis_targetdrug(psdata, drugname):
     resultanalysis = []
-    if len(set(psdata['意义'].tolist())) > 1:
-        mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
-    elif len(set(psdata['意义'].tolist())) == 1:
-        mindescription = '该检测个体对%s药物治疗相对敏感。'
-    for drugtypename, drugtypegroup in psdata.groupby(by='药物类型'):
-        if len(set(drugtypegroup['意义'].tolist())) > 1:
-            if drugtypename == '药物治疗':
-                mindescription = '该检测个体对%s药物治疗敏感性降低，建议综合考虑毒副作用适当调整剂量使用。' % drugname.replace('/', '、')
-            elif drugtypename == '毒副作用':
-                mindescription = '该检测个体常规剂量下%s药物治疗毒副作用风险相对增加。' % drugname.replace('/', '、')
-
-        elif len(set(drugtypegroup['意义'].tolist())) == 1:
-            if drugtypename == '药物治疗' or drugtypename == '药物治疗和毒副作用':
-                if '敏感性降低' in drugtypegroup['意义'].tolist()[0]:
-                    mindescription = '该检测个体对%s相对不敏感。' % drugname.replace('/', '、')
-                else:
-                    mindescription = '该检测个体对%s%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
-            elif drugtypename == '毒副作用':
-                mindescription = '该检测个体常规剂量下%s药物治疗%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
-
+    deslist = [i for i in set(psdata['意义'].tolist())]
+    if len(deslist) == 1:
+        mindescription = '该检测个体对%s%s。'%(drugname.replace('/', '、'), deslist[0])
         resultanalysis.append(mindescription)
 
-        if len(mindict.keys()) == 3:
-            newdes = mindict['药物治疗'] + mindict['毒副作用'] + '，' + mindict['补充']
-        elif len(mindict.keys()) == 2 and '毒副作用' in mindict.keys():
-            newdes = mindict['药物治疗'] + mindict['毒副作用'] + '。'
-        elif len(minldict.keys()) == 2 and '毒副作用' not in mindict.keys():
-            newdes = mindict['药物治疗'] + mindict['补充']
+    elif len(deslist) > 1:
+        if '建议结合EGFR突变综合分析' in deslist.__str__():
+            drugyiyi = [i for i in deslist if '建议结合EGFR突变综合分析' not in i]
+            if len(drugyiyi) == 1:
+                mindescription = '该检测个体对%s%s。' % (drugname.replace('/', '、'), drugyiyi[0])
+                resultanalysis.append(mindescription)
+            elif len(drugyiyi) > 1:
+                mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
+                resultanalysis.append(mindescription)
+        elif '神经胶质瘤' in psdata['癌种'].tolist():
+            if len(deslist) >2:
+                if psdata['意义'].tolist().count('预后较好，药物治疗相对敏感') == 2:
+                    mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
+                else:
+                    mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对敏感。'
+            else:
+                if psdata['意义'].tolist().count('预后较好，药物治疗相对敏感') == 2:
+                    mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
+                elif psdata['意义'].tolist().count('预后欠佳，药物治疗相对敏感') == 2:
+                    mindescription = '预后欠佳，对替莫唑胺药物相对不敏感'
+                else:
+                    mindescription = '该检测个体对替莫唑胺药物治疗相对敏感。'
 
-        resultanalysis.append(newdes)
-    # resultanalysis = [i for i in set(resultanalysis)]
+
+
+
+        else:
+            mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
+            resultanalysis.append(mindescription)
+
+        resultanalysis.append(mindescription)
     return resultanalysis
 
 def sort_by_drug(analysislist):
@@ -266,10 +272,8 @@ def main(Expresultfiles):
 def extract_result(backgroudfile, data_person):
     personlist = []
     for minproject in data_person.index.tolist():
-        # pro_inform = backgroudfile[backgroudfile['检测项目'] == data_person.loc[minproject, '项目名称']]
-        # [backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果']]  # 将每个检测样本的检测项目和结果对应的数据库中的信息提取出来,但是未区分肿瘤
         pro_inform = backgroudfile[(backgroudfile['检测项目'] == data_person.loc[minproject, '项目名称']) &
-                                   (backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果'])]
+                                   (backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果'])]         # 将每个检测样本的检测项目和结果对应的数据库中的信息提取出来,但是未区分肿瘤
         target_cancer = data_person['靶向癌种'].tolist()[0].strip()     #靶向项目对应的癌种
         chemo_cancer = data_person['靶向癌种'].tolist()[0].strip()      #化疗项目对应的癌种
         for typename, group in pd.groupby(pro_inform, by='检测项目类型'):
