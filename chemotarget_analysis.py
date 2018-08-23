@@ -21,13 +21,12 @@ def add_basic_informmation(doc, informdict, barcode):
     doctable.Cell(2, 2).Range.Text = informdict[barcode]['样本号']
     doctable.Cell(2, 4).Range.Text = informdict[barcode]['录入时间'].strftime('%Y/%m/%d')
     doctable.Cell(3, 4).Range.Text = nowtime
-    # doctable.Cell(3,4).Range.Text = '2018/04/11' #报告时间
     doctable.Cell(7, 3).Range.Text = informdict[barcode]['姓名']
     doctable.Cell(9, 2).Range.Text = informdict[barcode]['性别']
     doctable.Cell(9, 4).Range.Text = informdict[barcode]['临床诊断']
     doctable.Cell(10, 2).Range.Text = str(informdict[barcode]['岁']) + '岁'
 
-    for partner in partnerlist:
+    for partner in partnerlist:     #部分代理商不显示在医院名称中
         if partner in informdict[barcode]['医院名称']:
             doctable.Cell(10, 4).Range.Text = ''
         else:
@@ -39,29 +38,27 @@ def add_basic_informmation(doc, informdict, barcode):
     doctable.Cell(12, 4).Range.Text = informdict[barcode]['病人号']
     doctable.Cell(13, 2).Range.Text = '正常'  #标本状态
     doctable.Cell(13, 4).Range.Text = informdict[barcode]['病理编号']
-    # doc.Tables[3].Cell(1, 2).Range.Text = informdict[barcode]['检测者']
     doc.Tables[3].Cell(1, 4).Range.Text = informdict[barcode]['审核时间'].strftime('%Y/%m/%d')
-    # doc.Tables[3].Cell(2, 2).Range.Text = '杨慧敏'
-    # doc.Tables[3].Cell(2, 2).Range.Text = informdict[barcode]['审核者']
     doc.Tables[3].Cell(2, 4).Range.Text = nowtime
     return doc
 
-def add_experiment_result(doc, persondata, wapp):
+def add_experiment_result(doc, persondata, wapp):   #对检测者的检测结果按照药物进行分析
     drugorder = sort_by_drug(persondata['关联药物'].tolist())
     data_grouped = persondata.groupby(by='关联药物')
     rownum = 2
     metaanalysislist = []
+    metadict = OrderedDict()
     for drugname in drugorder:
         evrygroup = data_grouped.get_group(drugname)
         minnum = len(evrygroup)
 
         if '靶向' in evrygroup['检测项目类型']:
-            metaanalysis_tar = meta_analysis_targetdrug()
-            metaanalysislist.append(metaanalysis_tar)
-
+            merdict = meta_analysis_targetdrug(psdata=evrygroup, drugname=drugname)
         elif '化疗' in evrygroup['检测项目类型']:
-            metaanalysis_chemo = meta_analysis_chemo(psdata=evrygroup, drugname=drugname)
-            metaanalysislist.append(metaanalysis_chemo)
+            merdict = meta_analysis_chemo(psdata=evrygroup, drugname=drugname)
+        merdict[drugname]['minnum'] = minnum
+        metadict.update(merdict)
+
 
         if minnum >1:
             doc.Tables[1].Cell(rownum, 1).Select()      #合并第一列
@@ -89,7 +86,7 @@ def add_experiment_result(doc, persondata, wapp):
     return doc
 
 def meta_analysis_chemo(psdata, drugname):
-    resultanalysis = []
+    mindict = {}
     drugtypelist = [i for i in set(psdata['药物类型'].tolist())]
     if len(drugtypelist) == 1:
         for drugtypename, drugtypegroup in psdata.groupby(by='药物类型'):
@@ -108,7 +105,7 @@ def meta_analysis_chemo(psdata, drugname):
                 elif drugtypename == '毒副作用':
                     mindescription = '该检测个体常规剂量下%s药物治疗%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
 
-            resultanalysis.append(mindescription)
+            mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription}
 
     elif len(drugtypelist) > 1:
         mindict = {}
@@ -136,48 +133,57 @@ def meta_analysis_chemo(psdata, drugname):
         elif len(minldict.keys()) == 2 and '毒副作用' not in mindict.keys():
             newdes = mindict['药物治疗'] + mindict['补充']
 
-        resultanalysis.append(newdes)
-    return resultanalysis
+        mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription}
+    return mindict
 
 def meta_analysis_targetdrug(psdata, drugname):
-    resultanalysis = []
+    mindict = {}
     deslist = [i for i in set(psdata['意义'].tolist())]
     if len(deslist) == 1:
         mindescription = '该检测个体对%s%s。'%(drugname.replace('/', '、'), deslist[0])
-        resultanalysis.append(mindescription)
 
     elif len(deslist) > 1:
         if '建议结合EGFR突变综合分析' in deslist.__str__():
             drugyiyi = [i for i in deslist if '建议结合EGFR突变综合分析' not in i]
             if len(drugyiyi) == 1:
                 mindescription = '该检测个体对%s%s。' % (drugname.replace('/', '、'), drugyiyi[0])
-                resultanalysis.append(mindescription)
             elif len(drugyiyi) > 1:
                 mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
-                resultanalysis.append(mindescription)
+
         elif '神经胶质瘤' in psdata['癌种'].tolist():
             if len(deslist) >2:
-                if psdata['意义'].tolist().count('预后较好，药物治疗相对敏感') == 2:
-                    mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
+                if psdata['意义'].tolist().count('预后欠佳，对替莫唑胺药物相对不敏感') == 2 and len(deslist) ==3:
+                    mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对不敏感。'
+                    proeff_tert = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
+                    proeff_atrx = '结合IDH检测结果分析预后欠佳。'
                 else:
-                    mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对敏感。'
+                    mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
+                    proeff_tert = '预后较好,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
+                    proeff_atrx = '结合IDH检测结果分析预后较好。'
             else:
                 if psdata['意义'].tolist().count('预后较好，药物治疗相对敏感') == 2:
                     mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
-                elif psdata['意义'].tolist().count('预后欠佳，药物治疗相对敏感') == 2:
-                    mindescription = '预后欠佳，对替莫唑胺药物相对不敏感'
+                    proeff_tert = '预后较好,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
+                    proeff_atrx = '结合IDH检测结果分析预后较好。'
+                elif psdata['意义'].tolist().count('预后欠佳，对替莫唑胺药物相对不敏感') == 2:
+                    if '药物治疗相对不敏感' in deslist:
+                        mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对不敏感。'
+                        proeff_tert = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
+                        proeff_atrx = '结合IDH检测结果分析预后欠佳。'
+                    else:
+                        mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对敏感。'
+                        proeff_tert = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
+                        proeff_atrx = '结合IDH检测结果分析预后欠佳。'
                 else:
                     mindescription = '该检测个体对替莫唑胺药物治疗相对敏感。'
-
-
-
-
         else:
             mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
-            resultanalysis.append(mindescription)
 
-        resultanalysis.append(mindescription)
-    return resultanalysis
+    if proeff_atrx in dir() == True:
+        mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription, 'proeff_atrx':proeff_atrx, 'proeff_strx':proeff_tert}
+    else:
+        mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription}
+    return mindict
 
 def sort_by_drug(analysislist):
     # sortdict = defaultdict(list)
@@ -229,6 +235,7 @@ def main(Expresultfiles):
             #         break
             # else:
             doc = add_experiment_result(doc=doc, persondata=personinform, wapp=w)
+            # metadict_all = add_experiment_result(personinform=personinform)
             if np.isnan(data_person['HE染色结果'][0]) == False:
                 doc.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
                     format(data_person['HE染色结果'][0], '.0%'))
