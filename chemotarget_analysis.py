@@ -42,14 +42,13 @@ def add_basic_informmation(doc, informdict, barcode):
     doc.Tables[3].Cell(2, 4).Range.Text = nowtime
     return doc
 
-def add_experiment_result(doc, persondata, wapp):   #对检测者的检测结果按照药物进行分析
+def analysis_personresult(persondata):   #对检测者的检测结果按照药物进行分析
     drugorder = sort_by_drug(persondata['关联药物'].tolist())
     data_grouped = persondata.groupby(by='关联药物')
-    rownum = 2
-    metaanalysislist = []
+
     metadict = OrderedDict()
     for drugname in drugorder:
-        evrygroup = data_grouped.get_group(drugname)
+        evrygroup = data_grouped.get_group(drugname)    #每一种药对应的所有项目
         minnum = len(evrygroup)
 
         if '靶向' in evrygroup['检测项目类型']:
@@ -57,33 +56,43 @@ def add_experiment_result(doc, persondata, wapp):   #对检测者的检测结果
         elif '化疗' in evrygroup['检测项目类型']:
             merdict = meta_analysis_chemo(psdata=evrygroup, drugname=drugname)
         merdict[drugname]['minnum'] = minnum
+        if '神经胶质瘤' in evrygroup['癌种'].tolist() and 'TERT基因突变分析' in evrygroup['项目'].tolist():    #对于神经胶质瘤项目，ATRX和TERT基因对应的意义需要根据IDH的结果来做出相应的修改
+            evrygroup.loc['TERT基因突变分析', '意义'] = merdict[drugname]['proeff_terx']
+            evrygroup.loc['ATRX蛋白表达水平分析', '意义'] = merdict[drugname]['proeff_atrx']
+
         metadict.update(merdict)
 
+    return metadict
 
-        if minnum >1:
-            doc.Tables[1].Cell(rownum, 1).Select()      #合并第一列
-            wapp.Selection.MoveDown(Unit=5, Count=minnum-1, Extend=1)
-            wapp.Selection.Cells.Merge()
-            doc.Tables[1].Cell(rownum, 1).Range.Text = drugname
 
-            doc.Tables[1].Cell(rownum, 5).Select()  #合并最后一列，写入综合分析结果
+def add_metaresult(alldict, doc, wapp):
+    rownum = 2
+    for drug in alldict.keys():
+        minnum = alldict[drug]['minnum']
+        if minnum > 1:
+            doc.Tables[1].Cell(rownum, 1).Select()  # 合并第一列，写入样品名称
             wapp.Selection.MoveDown(Unit=5, Count=minnum - 1, Extend=1)
             wapp.Selection.Cells.Merge()
-            doc.Tables[1].Cell(rownum,5).Range.Text = metaanalysis[0]
+            doc.Tables[1].Cell(rownum, 1).Range.Text = drug
+
+            doc.Tables[1].Cell(rownum, 5).Select()  # 合并最后一列，写入综合分析结果
+            wapp.Selection.MoveDown(Unit=5, Count=minnum - 1, Extend=1)
+            wapp.Selection.Cells.Merge()
+            doc.Tables[1].Cell(rownum, 5).Range.Text = alldict[drug]['meta_con']
 
         elif minnum == 1:
             doc.Tables[1].Cell(rownum, 1).Range.Text = drugname
-            # doc.Tables[1].Cell(rownum, 2).Range.Text = evrygroup['肿瘤'].tolist()[0]
-            doc.Tables[1].Cell(rownum, 5).Range.Text = metaanalysis[0]
+            doc.Tables[1].Cell(rownum, 5).Range.Text = alldict[drug]['meta_con']
 
         for minproject in evrygroup.index.tolist():
             doc.Tables[1].Cell(rownum, 2).Range.Text = persondata.loc[minproject, '检测项目']
             doc.Tables[1].Cell(rownum, 3).Range.Text = persondata.loc[minproject, '检测结果']
             doc.Tables[1].Cell(rownum, 4).Range.Text = persondata.loc[minproject, '意义']
 
-            if rownum <= len(persondata)+1:
-                rownum +=1
+            if rownum <= len(persondata) + 1:
+                rownum += 1
     return doc
+
 
 def meta_analysis_chemo(psdata, drugname):
     mindict = {}
@@ -105,7 +114,7 @@ def meta_analysis_chemo(psdata, drugname):
                 elif drugtypename == '毒副作用':
                     mindescription = '该检测个体常规剂量下%s药物治疗%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
 
-            mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription}
+            mindict[drugname] = {'meta_con':mindescription}
 
     elif len(drugtypelist) > 1:
         mindict = {}
@@ -133,7 +142,7 @@ def meta_analysis_chemo(psdata, drugname):
         elif len(minldict.keys()) == 2 and '毒副作用' not in mindict.keys():
             newdes = mindict['药物治疗'] + mindict['补充']
 
-        mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription}
+        mindict[drugname] = {'meta_con':mindescription}
     return mindict
 
 def meta_analysis_targetdrug(psdata, drugname):
@@ -180,9 +189,9 @@ def meta_analysis_targetdrug(psdata, drugname):
             mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
 
     if proeff_atrx in dir() == True:
-        mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription, 'proeff_atrx':proeff_atrx, 'proeff_strx':proeff_tert}
+        mindict[drugname] = {'meta_con':mindescription, 'proeff_atrx':proeff_atrx, 'proeff_tert':proeff_tert}
     else:
-        mindict[drugname] = {'datagroup':psdata, 'metaanalysis':mindescription}
+        mindict[drugname] = {'meta_con':mindescription}
     return mindict
 
 def sort_by_drug(analysislist):
@@ -216,16 +225,15 @@ def main(Expresultfiles):
             print('正在生成【%s_%s】的报告，请稍等！检测项目是：%s'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['检验目的名称']))
             copyfile(reporttemplate, reportname)
 
-            data_person = Expresultfile.parse(sheetname=str(eachsample))  # 解析每个人的检测结果
+            data_person = Expresultfile.parse(sheetname=str(eachsample))  # 解析检测者的检测结果
+            personinform = extract_result(backgroudfile, data_person)   #提取出检测者的检测结果对应的背景信息
+            metadict_all = analysis_personresult(personinform=personinform)  # 分析检测者的检测结果
 
             w = win32com.client.Dispatch('Word.Application')
             w.Visible = 0
             w.DisplayAlerts = 0
             doc = w.Documents.Open(FileName=reportname)
             doc = add_basic_informmation(doc=doc, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
-
-            personinform = extract_result(backgroudfile, data_person)
-
             for rownum in range(0,len(personinform)-1, 1):    #根据结果的行数增加表格中的行数
                 doc.Tables[1].Rows.Add()
 
@@ -234,46 +242,54 @@ def main(Expresultfiles):
             #         print('该受试者的检测项目有缺失：%s' % per_pro)
             #         break
             # else:
-            doc = add_experiment_result(doc=doc, persondata=personinform, wapp=w)
-            # metadict_all = add_experiment_result(personinform=personinform)
+            # doc = add_experiment_result(doc=doc, persondata=personinform, wapp=w)
+
+
+            doc = add_metaresult(alldict=metadict_all, wapp=w, doc=doc)     #将检测结果写入到word中
+
             if np.isnan(data_person['HE染色结果'][0]) == False:
                 doc.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
                     format(data_person['HE染色结果'][0], '.0%'))
 
-            backgenelist = personinform['背景资料'].tolist()
+                backgenelist = personinform['背景资料'].tolist()    #背景资料基因
             subtabnum = 0
             for tabnum in range(5, doc.Tables.Count):
-                if doc.Tables[tabnum - subtabnum].Rows[2].Range.Text.split('\r')[0] not in backgenelist:
+                if doc.Tables[tabnum - subtabnum].Rows[2].Range.Text.split('\r')[0] not in backgenelist:    #将不在基因列表中的背景资料删除，存在的留下
                     doc.Tables[tabnum - subtabnum].Delete()
                     subtabnum += 1
                 else:
                     pass
+                
+            misspro = [i for i in data_person['项目名称'].tolist() if i not in personinform['检测项目'].tolist()]
+            if len(misspro) ==0:
                 doc.SaveAs(reportname2, 17)
-                doc.Close()
+            else:
+                print('该受试者的检测项目缺失--%s项：%s' %(len(misspro), ll))
+            doc.Close()
 
-                # 如果是平邑县医院，则另生成B5版报告
-                if '平邑' in informdict[eachsample]['医院名称']:
-                    reportname_B5 = os.path.join(os.getcwd(), '%s_%s_%s_B5.docx' % (
-                    eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
-                    reportname_B5_2 = os.path.join(os.getcwd(), '%s_%s_%s_B5.pdf' % (
-                    eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
-                    copyfile(reporttemplate_2, reportname_B5)
-                    w = win32com.client.Dispatch('Word.Application')
-                    w.Visible = 0
-                    w.DisplayAlerts = 0
-                    doc2 = w.Documents.Open(FileName=reportname_B5)
-                    doc2 = add_basic_informmation(doc=doc, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
-                    if np.isnan(data_person['HE染色结果'][0]) == False:
-                        doc2.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
-                            format(data_person['HE染色结果'][0], '.0%'))
-                    rownumber = 1
-                    for everyitem in com_analysis_result:
-                        doc2.Tables[3].Rows[rownumber].Range.Text = str(rownumber) + '）' + everyitem
-                        if rownumber < len(com_analysis_result):
-                            rownumber += 1
-                            doc2.Tables[3].Rows.Add()
-                    doc2.SaveAs(reportname_B5_2, 17)
-                    doc2.Close()
+            # 如果是平邑县医院，则另生成B5版报告
+            if '平邑' in informdict[eachsample]['医院名称']:
+                reportname_B5 = os.path.join(os.getcwd(), '%s_%s_%s_B5.docx' % (
+                eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
+                reportname_B5_2 = os.path.join(os.getcwd(), '%s_%s_%s_B5.pdf' % (
+                eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
+                copyfile(reporttemplate_2, reportname_B5)
+                w = win32com.client.Dispatch('Word.Application')
+                w.Visible = 0
+                w.DisplayAlerts = 0
+                doc2 = w.Documents.Open(FileName=reportname_B5)
+                doc2 = add_basic_informmation(doc=doc, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
+                if np.isnan(data_person['HE染色结果'][0]) == False:
+                    doc2.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
+                        format(data_person['HE染色结果'][0], '.0%'))
+                rownumber = 1
+                for everyitem in com_analysis_result:
+                    doc2.Tables[3].Rows[rownumber].Range.Text = str(rownumber) + '）' + everyitem
+                    if rownumber < len(com_analysis_result):
+                        rownumber += 1
+                        doc2.Tables[3].Rows.Add()
+                doc2.SaveAs(reportname_B5_2, 17)
+                doc2.Close()
 
 
 def extract_result(backgroudfile, data_person):
