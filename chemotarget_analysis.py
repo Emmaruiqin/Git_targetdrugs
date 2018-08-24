@@ -291,10 +291,6 @@ def main(Expresultfiles):
                 doc_b5.SaveAs(reportname_B5_2, 17)
                 doc_b5.Close()
 
-
-
-
-
 if __name__ == '__main__':
     # Expresultfiles = ['个体化20180608-1_合并测试 - 副本.xlsm']
     # main(Expresultfiles=Expresultfiles)
