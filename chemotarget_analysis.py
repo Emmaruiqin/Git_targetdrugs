@@ -44,11 +44,12 @@ def add_basic_informmation(doc, informdict, barcode):
 
 def extract_result(backgroudfile, data_person):
     personlist = []
+    target_cancer = data_person['靶向癌种'].tolist()[0].strip()  # 靶向项目对应的癌种
+    chemo_cancer = data_person['靶向癌种'].tolist()[0].strip()  # 化疗项目对应的癌种
     for minproject in data_person.index.tolist():
         pro_inform = backgroudfile[(backgroudfile['检测项目'] == data_person.loc[minproject, '项目名称']) &
                                    (backgroudfile['检测结果'] == data_person.loc[minproject, '审核人结果'])]         # 将每个检测样本的检测项目和结果对应的数据库中的信息提取出来,但是未区分肿瘤
-        target_cancer = data_person['靶向癌种'].tolist()[0].strip()     #靶向项目对应的癌种
-        chemo_cancer = data_person['靶向癌种'].tolist()[0].strip()      #化疗项目对应的癌种
+
         for typename, group in pd.groupby(pro_inform, by='检测项目类型'):
             if '靶向' in typename:
                 tar_re = group[group['癌种'].str.contains(target_cancer)]
@@ -56,7 +57,7 @@ def extract_result(backgroudfile, data_person):
             elif '化疗' in typename:
                 chem_re = group[group['癌种'].str.contains(chemo_cancer)]
                 personlist.append(chem_re)
-    personinform = pd.concat(personlist, axis=1)  # 每个检测者的检测结果
+    personinform = pd.concat(personlist)  # 每个检测者的检测结果
     return personinform
 
 def analysis_personresult(persondata):   #对检测者的检测结果按照药物进行分析
@@ -221,16 +222,16 @@ def sort_by_drug(analysislist):
     return sortedanalysis
 
 def main(Expresultfiles):
-    reporttemplate = u'E:\\化疗套餐报告自动化\\肿瘤个体化化疗套餐项目报告自动化资料\\化疗套餐模板_合并综述_20180803.docx'  # 读取报告模板
-    reporttemplate_2 = u'E:\\化疗套餐报告自动化\\肿瘤个体化化疗套餐项目报告自动化资料\\个体化报告模板_B5模板_合并单元格.docx'  # 读取报告模板
-    backgroudfile = pd.read_excel('E:\\化疗套餐报告自动化\\肿瘤个体化化疗套餐项目报告自动化资料\\单项化疗数据库_V5_20180725.xlsx')  # 背景资料文件
+    os.chdir('E:\\化疗靶向库文件\\测试结果')
+    reporttemplate = u'E:\\化疗靶向库文件\\化疗靶向报告模板_新版_20180903.docx'  # 读取报告模板
+    # reporttemplate_2 = u'E:\\化疗套餐报告自动化\\肿瘤个体化化疗套餐项目报告自动化资料\\个体化报告模板_B5模板_合并单元格.docx'  # 读取报告模板
+    backgroudfile = pd.read_excel('E:\\化疗靶向库文件\\化疗靶向药物数据库_合并.xlsx')  # 背景资料文件
     for file in Expresultfiles:
         Expresultfile = pd.ExcelFile(file)  # 读取需要出具报告的受试者信息表
-
         sampleinform = Expresultfile.parse(sheetname='基本信息', index_col='条码', converters={'身份证号': str})
         sampleinform.fillna('', inplace=True)
-
         informdict = sampleinform.to_dict(orient='index')  # 将信息表转化成dict，以条形码为key
+
         for eachsample in informdict.keys():  # 打印正在生成的检测者
             reportname = os.path.join(os.getcwd(), '%s_%s_%s.docx'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
             reportname2 = os.path.join(os.getcwd(), '%s_%s_%s.pdf'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
@@ -292,6 +293,6 @@ def main(Expresultfiles):
                 doc_b5.Close()
 
 if __name__ == '__main__':
-    # Expresultfiles = ['个体化20180608-1_合并测试 - 副本.xlsm']
-    # main(Expresultfiles=Expresultfiles)
-    main()
+    Expresultfiles = ['化疗靶向结果登记表_新_20180903.xlsm']
+    main(Expresultfiles=Expresultfiles)
+    # main()
