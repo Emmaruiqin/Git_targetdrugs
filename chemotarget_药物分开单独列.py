@@ -52,10 +52,10 @@ def extract_result(backgroudfile, data_person, target_cancer, chemo_cancer):
 
         for typename, group in pd.groupby(pro_inform, by='检测项目类型'):
             if typename == '靶向':
-                tar_re = group[group['癌种'].str.contains(target_cancer)]
+                tar_re = group[group['癌种'].str.contains('/'+target_cancer)]
                 personlist.append(tar_re)
             elif typename == '化疗':
-                chem_re = group[group['癌种'].str.contains(chemo_cancer)]
+                chem_re = group[group['癌种'].str.contains('/'+chemo_cancer)]
                 personlist.append(chem_re)
     personinform = pd.concat(personlist)  # 每个检测者的检测结果
     return personinform
@@ -76,28 +76,27 @@ def analysis_personresult(persondata, target_cancer, chemo_cancer):   #对检测
     #对神经胶质瘤特殊处理
     if len(tarlist) != 0:
         tardict = drugmerge_analysis(tarlist)
-        if target_cancer == '神经胶质瘤' and 'TERT基因突变分析' in tardict['替莫唑胺']['druggroup']['检测项目'].tolist():
-            dmgroup = tardict['/']['drugroup']
+        if target_cancer == '神经胶质瘤' and 'TERT基因突变分析' in tardict['/']['druggroup']['检测项目'].tolist():
+            dmgroup = tardict['/']['druggroup']
             if '预后较好' not in tardict['替莫唑胺']['druggroup']['意义'].__str__():
                 dmgroup['意义'][dmgroup['检测项目'] == 'TERT基因突变分析'] = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤'
                 dmgroup['药物对应意义'][dmgroup['检测项目'] == 'TERT基因突变分析'] = '预后欠佳'
                 dmgroup['意义'][dmgroup['检测项目'] == 'ATRX蛋白表达水平分析'] = '结合IDH检测结果分析预后欠佳'
                 dmgroup['药物对应意义'][dmgroup['检测项目'] == 'ATRX蛋白表达水平分析'] = '预后欠佳'
-                tardict['替莫唑胺']['meta_con'].replace('替莫唑胺', '替莫唑胺预后较差，')
+                tardict['替莫唑胺']['meta_con'] = tardict['替莫唑胺']['meta_con'].replace('替莫唑胺', '替莫唑胺预后较差，')
             elif '预后较好' in tardict['替莫唑胺']['druggroup']['意义'].__str__():
                 dmgroup['意义'][dmgroup['检测项目'] == 'TERT基因突变分析'] = '结合IDH检测结果分析预后较好,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤'
                 dmgroup['药物对应意义'][dmgroup['检测项目'] == 'TERT基因突变分析'] = '预后较好'
                 dmgroup['意义'][dmgroup['检测项目'] == 'ATRX蛋白表达水平分析'] = '结合IDH检测结果分析预后较好'
                 dmgroup['药物对应意义'][dmgroup['检测项目'] == 'ATRX蛋白表达水平分析'] = '预后较好'
-                tardict['替莫唑胺']['meta_con'].replace('替莫唑胺', '替莫唑胺预后较好，')
-            if '预后较好' in tardict['/']['药物对应意义'].tolist():
+                tardict['替莫唑胺']['meta_con'] = tardict['替莫唑胺']['meta_con'].replace('替莫唑胺', '替莫唑胺预后较好，')
+            if '预后较好' in tardict['/']['druggroup']['药物对应意义'].__str__():
                 tardict['/']['meta_con'] = '预后较好'
             else:
-                tardict['/']['meta_con'] = '预后较好'
-                
+                tardict['/']['meta_con'] = '预后较差'
+
         #处理同时存在于化疗和靶向的药物
-        elif target_cancer == '结直肠癌' and '微卫星不稳定性(MSI)分析' in tardict['氟尿嘧啶类/卡培他滨']['druggroup']['检测项目'].tolist()
-            and '氟尿嘧啶类/卡培他滨' in metadict.keys():
+        elif target_cancer == '结直肠癌' and '微卫星不稳定性(MSI)分析' in tardict['氟尿嘧啶类/卡培他滨']['druggroup']['检测项目'].tolist() and '氟尿嘧啶类/卡培他滨' in metadict.keys():
             fngr = pd.concat([metadict['氟尿嘧啶类/卡培他滨']['druggroup'], tardict['氟尿嘧啶类/卡培他滨']['druggroup']])
             tar_yy = [i for i in set(tardict['氟尿嘧啶类/卡培他滨']['druggroup']['药物对应意义'].tolist())]
             che_yy = metadict['氟尿嘧啶类/卡培他滨']['druggroup']['药物对应意义'].tolist()
@@ -105,7 +104,7 @@ def analysis_personresult(persondata, target_cancer, chemo_cancer):   #对检测
             if tar_yy[0] not in che_yy:
                 meta_tc = metadict['氟尿嘧啶类/卡培他滨']['meta_con'].replace('该检测个体常规剂量下', '该检测个体%s,'%tar_msi[0])
                 if '药物治疗敏感性降低，' not in meta_tc:
-                    meta_tc.replace('药物治疗相对敏感,', '药物治疗敏感性降低，')
+                    meta_tc = meta_tc.replace('药物治疗相对敏感,', '药物治疗敏感性降低，')
             else:
                 meta_tc = metadict['氟尿嘧啶类/卡培他滨']['meta_con'].replace('该检测个体常规剂量下', '该检测个体%s，'%tar_msi[0])
             metadict['氟尿嘧啶类/卡培他滨']={'druggroup':fngr, 'meta_con':meta_tc}
@@ -125,14 +124,12 @@ def drugmerge_analysis(drug_sl):
         group['合并后药物'] = mergedrug
         if mergedrug not in mergedrug_dict.keys():
             setgroup = group.drop_duplicates(['检测项目', '药物对应意义'])     #去除重复项
-            meta_con = '该检测个体对%s%s。' %(mergedrug, minmeta)
-            mergedrug_dict[mergedrug] = {'druggroup':setgroup, 'minmum':len(setgroup), 'meta_con':meta_con}
+            meta_con = '该检测个体对%s%s' %(mergedrug, minmeta)
+            mergedrug_dict[mergedrug] = {'druggroup':setgroup, 'minnum':len(setgroup), 'meta_con':meta_con}
         else:
             pass
 
     return mergedrug_dict
-
-
 
 def meta_analysis_chemo(chemodata, drugname):
     drugmetadict = OrderedDict()
@@ -154,7 +151,7 @@ def meta_analysis_chemo(chemodata, drugname):
                 elif drugtypename == '毒副作用':
                     mindescription = '该检测个体常规剂量下%s药物治疗%s。' % (drugname.replace('/', '、'), drugtypegroup['意义'].tolist()[0])
 
-            drugmetadict[drugname] = {'druggroup':chemodata, 'minmum':len(chemodata), 'meta_con':mindescription}
+            drugmetadict[drugname] = {'druggroup':chemodata, 'minnum':len(chemodata), 'meta_con':mindescription}
 
     elif len(drugtypelist) > 1:
         mindict = {}
@@ -182,23 +179,28 @@ def meta_analysis_chemo(chemodata, drugname):
         elif len(minldict.keys()) == 2 and '毒副作用' not in mindict.keys():
             newdes = mindict['药物治疗'] + mindict['补充']
 
-        drugmetadict[drugname] = {'druggroup':chemodata,'minmum':len(chemodata),'meta_con':newdes}
+        drugmetadict[drugname] = {'druggroup':chemodata,'minnum':len(chemodata),'meta_con':newdes}
     return drugmetadict
 
 def meta_analysis_targetdrug_new(targetdata, drugname):
     mindict = {}
     senlist = [i for i in set(targetdata['药物对应意义'].tolist())]
     deslist = [i for i in set(targetdata['意义'].tolist())]
-    if len(senlist) == 1:
-        mindiscription = '%s。'%deslist[0]
+    if len(senlist) == 1 and len(deslist) == 1:
+        mindiscription = '%s'%deslist[0]
+    elif len(senlist) == 1 and len(deslist)>1:
+        mindiscription = '%s'%senlist[0]
     elif len(senlist) > 1:
         if '任一敏感则敏感' in targetdata['判断规则'].tolist().__str__():
             mindiscription = '药物治疗相对敏感'
         elif '全敏感则敏感' in targetdata['判断规则'].tolist().__str__():
             mindiscription = '药物治疗相对不敏感'
         elif 'Kras为主' in targetdata['判断规则'].tolist().__str__():
-            kras_yiyi = targetdata[targetdata['检测项目'] == 'K-ras code12,13突变分析']['药物对应意义']
-            mindiscription = '%s'% kras_yiyi
+            if 'K-ras' in targetdata['检测项目'].tolist().__str__():
+                kras_yiyi = targetdata[targetdata['检测项目'] == 'K-ras code12,13突变分析']['药物对应意义']
+                mindiscription = '%s'% kras_yiyi
+            else:
+                mindiscription = '药物治疗相对敏感'
     # mindict[drugname] = {'meta_con':mindiscription}
     pro_drug = targetdata['检测项目'].tolist()
     pro_drug.sort()
@@ -208,64 +210,11 @@ def meta_analysis_targetdrug_new(targetdata, drugname):
     return targetdata
 
 
-
-
-
-def meta_analysis_targetdrug(targetdata, drugname):
-    mindict = {}
-    deslist = [i for i in set(targetdata['意义'].tolist())]
-    if len(deslist) == 1:
-        mindescription = '该检测个体对%s%s。'%(drugname.replace('/', '、'), deslist[0])
-
-    elif len(deslist) > 1:
-        if '建议结合EGFR突变综合分析' in deslist.__str__():
-            drugyiyi = [i for i in deslist if '建议结合EGFR突变综合分析' not in i]
-            if len(drugyiyi) == 1:
-                mindescription = '该检测个体对%s%s。' % (drugname.replace('/', '、'), drugyiyi[0])
-            elif len(drugyiyi) > 1:
-                mindescription = '该检测个体对%s药物治疗相对不敏感。' % drugname.replace('/', '、')
-
-        elif '神经胶质瘤' in targetdata['癌种'].tolist():
-            if len(deslist) >2:
-                if targetdata['意义'].tolist().count('预后欠佳，对替莫唑胺药物相对不敏感') == 2 and len(deslist) ==3:
-                    mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对不敏感。'
-                    proeff_tert = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
-                    proeff_atrx = '结合IDH检测结果分析预后欠佳。'
-                else:
-                    mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
-                    proeff_tert = '预后较好,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
-                    proeff_atrx = '结合IDH检测结果分析预后较好。'
-            else:
-                if targetdata['意义'].tolist().count('预后较好，药物治疗相对敏感') == 2:
-                    mindescription = '该检测个体预后较好，对替莫唑胺药物治疗相对敏感。'
-                    proeff_tert = '预后较好,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
-                    proeff_atrx = '结合IDH检测结果分析预后较好。'
-                elif targetdata['意义'].tolist().count('预后欠佳，对替莫唑胺药物相对不敏感') == 2:
-                    if '药物治疗相对不敏感' in deslist:
-                        mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对不敏感。'
-                        proeff_tert = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
-                        proeff_atrx = '结合IDH检测结果分析预后欠佳。'
-                    else:
-                        mindescription = '该检测个体预后欠佳，对替莫唑胺药物治疗相对敏感。'
-                        proeff_tert = '结合IDH检测结果分析预后欠佳,突变常见于原发性胶质母细胞瘤和少突星形细胞瘤。'
-                        proeff_atrx = '结合IDH检测结果分析预后欠佳。'
-                else:
-                    mindescription = '该检测个体对替莫唑胺药物治疗相对敏感。'
-        else:
-            mindescription = '该检测个体对%s药物治疗相对敏感。' % drugname.replace('/', '、')
-
-    if 'proeff_atrx' in dir() == True:
-        mindict[drugname] = {'meta_con':mindescription, 'proeff_atrx':proeff_atrx, 'proeff_tert':proeff_tert}
-    else:
-        mindict[drugname] = {'meta_con':mindescription}
-    return mindict
-
-
 def add_metaresult(alldict, doc, wapp, resdata):
     rownum = 2
-    resdata_grouped = resdata.groupby('关联药物')
+    # resdata_grouped = resdata.groupby('关联药物')
     for drug in alldict.keys():
-        regroup = resdata_grouped.get_group(drug)
+        regroup = alldict[drug]['druggroup']
         minnum = alldict[drug]['minnum']
         if minnum > 1:
             doc.Tables[1].Cell(rownum, 1).Select()  # 合并第一列，写入样品名称
@@ -276,11 +225,11 @@ def add_metaresult(alldict, doc, wapp, resdata):
             doc.Tables[1].Cell(rownum, 5).Select()  # 合并最后一列，写入综合分析结果
             wapp.Selection.MoveDown(Unit=5, Count=minnum - 1, Extend=1)
             wapp.Selection.Cells.Merge()
-            doc.Tables[1].Cell(rownum, 5).Range.Text = alldict[drug]['meta_con']
+            doc.Tables[1].Cell(rownum, 5).Range.Text = alldict[drug]['meta_con'].replace('/', '、')
 
         else:
             doc.Tables[1].Cell(rownum, 1).Range.Text = drug
-            doc.Tables[1].Cell(rownum, 5).Range.Text = alldict[drug]['meta_con']
+            doc.Tables[1].Cell(rownum, 5).Range.Text = alldict[drug]['meta_con'].replace('/', '、')
 
         for minproject in regroup.index.tolist():
             doc.Tables[1].Cell(rownum, 2).Range.Text = regroup.loc[minproject, '检测项目']
@@ -316,11 +265,22 @@ def main(Expresultfiles):
 
         for eachsample in informdict.keys():  # 打印正在生成的检测者
             print('正在生成【%s_%s】的报告，请稍等！检测项目是：%s' % (eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['检验目的名称']))
-            data_person = Expresultfile.parse(sheetname=str(eachsample))  # 解析检测者的检测结果
+            data_person = Expresultfile.parse(sheetname=str(eachsample), converters={'蛋白表达强度':str})  # 解析检测者的检测结果
             target_cancer = data_person['靶向癌种'].tolist()[0].strip()  # 靶向项目对应的癌种
             chemo_cancer = data_person['靶向癌种'].tolist()[0].strip()  # 化疗项目对应的癌种
             personinform = extract_result(backgroudfile, data_person, target_cancer=target_cancer, chemo_cancer=chemo_cancer)  # 提取出检测者的检测结果对应的背景信息
             metadict_all = analysis_personresult(persondata=personinform, target_cancer=target_cancer, chemo_cancer=chemo_cancer)  # 分析检测者的检测结果,生成药物-综合分析-对应检测项目数量的字典
+            if len(data_person['蛋白表达强度'].dropna()) != 0:
+                protein_pers = {}
+                for i in data_person['蛋白表达强度'].dropna().index:
+                    protein_pers[data_person.loc[i, '项目名称']] = data_person.loc[i, '蛋白表达强度']
+                for drugname in ['/', 'Nivolumab', 'Atezolizumab', 'Pembrolizumab']:
+                    for proteinpro in protein_pers.keys():
+                        if protein_pers in metadict_all[drugname]['druggroup']['检测项目'].tolist():
+                            dr_group = metadict_all[drugname]['druggroup']
+                            dr_group[dr_group['检测项目'] == proteinpro]['检测结果'] = protein_pers[proteinpro]
+                            metadict_all[drugname]['druggroup'] = dr_group
+
 
             reportname = os.path.join(os.getcwd(), '%s_%s_%s.docx'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
             reportname2 = os.path.join(os.getcwd(), '%s_%s_%s.pdf'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
@@ -331,7 +291,10 @@ def main(Expresultfiles):
             w.DisplayAlerts = 0
             doc = w.Documents.Open(FileName=reportname)
             doc = add_basic_informmation(doc=doc, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
-            for rownum in range(0,len(personinform)-1, 1):    #根据结果的行数增加表格中的行数
+            rownum_all = 0
+            for drug in metadict_all.keys():
+                rownum_all+=metadict_all[drug]['minnum']
+            for rownum in range(0,rownum_all-1, 1):    #根据结果的行数增加表格中的行数
                 doc.Tables[1].Rows.Add()
             doc = add_metaresult(alldict=metadict_all, wapp=w, doc=doc, resdata=personinform)     #将检测结果写入到word中
             if np.isnan(data_person['HE染色结果'][0]) == False:     #如果有肿瘤组织含量结果则写入报告中，如果没有则不写
@@ -340,7 +303,7 @@ def main(Expresultfiles):
 
             backgenelist = personinform['背景资料'].tolist()    #背景资料基因
             subtabnum = 0
-            for tabnum in range(5, doc.Tables.Count):
+            for tabnum in range(4, doc.Tables.Count):
                 if doc.Tables[tabnum - subtabnum].Rows[2].Range.Text.split('\r')[0] not in backgenelist:    #将不在基因列表中的背景资料删除，存在的留下
                     doc.Tables[tabnum - subtabnum].Delete()
                     subtabnum += 1
@@ -364,7 +327,7 @@ def main(Expresultfiles):
                 w.DisplayAlerts = 0
                 doc_b5 = w.Documents.Open(FileName=reportname_B5)
                 doc_b5 = add_basic_informmation(doc=doc_b5, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
-                for rownum in range(0, len(personinform)-1, 1):  # 根据结果的行数增加表格中的行数
+                for rownum in range(0, rownum_all-1, 1):  # 根据结果的行数增加表格中的行数
                     doc_b5.Tables[1].Rows.Add()
 
                 doc_b5 = add_metaresult(alldict=metadict_all, wapp=w, doc=doc_b5, resdata=personinform)  # 将检测结果写入到word中
@@ -380,6 +343,6 @@ def main(Expresultfiles):
                 doc_b5.Close()
 
 if __name__ == '__main__':
-    Expresultfiles = ['化疗靶向结果登记表_新_20180903 - 副本 (2).xlsm']
+    Expresultfiles = ['化疗靶向结果登记表_新_20180903.xlsm']
     main(Expresultfiles=Expresultfiles)
     # main()
