@@ -7,7 +7,6 @@ import time
 from pandas import ExcelWriter
 import numpy as np
 from collections import defaultdict, OrderedDict
-import re
 
 def add_basic_informmation(doc, informdict, barcode):
     nowtime = time.strftime('%Y/%m/%d', time.localtime())
