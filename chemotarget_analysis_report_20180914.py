@@ -7,6 +7,8 @@ import time
 from pandas import ExcelWriter
 import numpy as np
 from collections import defaultdict, OrderedDict
+from glob import glob
+import math
 
 def add_basic_informmation(doc, informdict, barcode):
     nowtime = time.strftime('%Y/%m/%d', time.localtime())
@@ -249,11 +251,31 @@ def sort_by_drug(analysislist):
     sortedanalysis = [i[0] for i in sort_result]
     return sortedanalysis
 
+def add_picture(doc, persencode):
+    imlist = [i for i in glob('%s\\*.jpg'%persencode)]
+    doc.Tables[4].Cell(1,1).Range.Text = str(persencode) + ' 检测结果附图/Pictures：'
+    for dnum in range(0, math.ceil(len(imlist)/2)*2-2, 1):
+        doc.Tables[4].Rows.Add()
+
+    imtable_row = 2
+    col_num = 1
+    for img in imlist:
+        img_name = img.split('\\')[-1].replace('.jpg', '')
+        doc.Tables[4].Cell(imtable_row,col_num).Range.Text = img_name
+        shape = doc.Tables[4].Cell(imtable_row+1, col_num).Range.InlineShapes.AddPicture(img, LinkToFile=False, SaveWithDocument=True)
+        shape.Height, shape.Width = 140, 210
+        if col_num == 1:
+            col_num = 3
+        else:
+            col_num = 1
+            imtable_row +=2
+
+
 def main(Expresultfiles):
     os.chdir('E:\\化疗靶向库文件\\测试结果')
+    backgroudfile = pd.read_excel('E:\\化疗靶向库文件\\化疗靶向用药数据库_靶向药物单列.xlsx')  # 背景资料文件
     reporttemplate = u'E:\\化疗靶向库文件\\化疗靶向报告模板_新版_20180903.docx'  # 读取报告模板
     reporttemplate_2 = u'E:\\化疗靶向库文件\\化疗靶向报告模板_新版_B5版本_20180903.docx'  # 读取报告模板
-    backgroudfile = pd.read_excel('E:\\化疗靶向库文件\\化疗靶向用药数据库_靶向药物单列.xlsx')  # 背景资料文件
     for file in Expresultfiles:
         Expresultfile = pd.ExcelFile(file)  # 读取需要出具报告的受试者信息表
         sampleinform = Expresultfile.parse(sheetname='基本信息', index_col='条码', converters={'身份证号': str})
@@ -294,6 +316,8 @@ def main(Expresultfiles):
             if np.isnan(data_person['HE染色结果'][0]) == False:     #如果有肿瘤组织含量结果则写入报告中，如果没有则不写
                 doc.Tables[2].Cell(1, 1).Range.Text = '注: HE染色结果分析其肿瘤组织含量约为%s。' % (
                     format(data_person['HE染色结果'][0], '.0%'))
+
+            doc = add_picture(doc=doc, persencode=eachsample)   #添加图片
 
             backgenelist = personinform['背景资料'].tolist()    #背景资料基因
             subtabnum = 0
