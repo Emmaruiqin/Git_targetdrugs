@@ -270,12 +270,10 @@ def add_picture(doc, persencode):
             col_num = 1
             imtable_row +=2
 
-
 def main(Expresultfiles):
     os.chdir('E:\\化疗靶向库文件\\测试结果')
     backgroudfile = pd.read_excel('E:\\化疗靶向库文件\\化疗靶向用药数据库_靶向药物单列.xlsx')  # 背景资料文件
-    reporttemplate = u'E:\\化疗靶向库文件\\化疗靶向报告模板_新版_20180903.docx'  # 读取报告模板
-    reporttemplate_2 = u'E:\\化疗靶向库文件\\化疗靶向报告模板_新版_B5版本_20180903.docx'  # 读取报告模板
+
     for file in Expresultfiles:
         Expresultfile = pd.ExcelFile(file)  # 读取需要出具报告的受试者信息表
         sampleinform = Expresultfile.parse(sheetname='基本信息', index_col='条码', converters={'身份证号': str})
@@ -290,7 +288,7 @@ def main(Expresultfiles):
             personinform = extract_result(backgroudfile, data_person, target_cancer=target_cancer, chemo_cancer=chemo_cancer)  # 提取出检测者的检测结果对应的背景信息
             metadict_all = analysis_personresult(persondata=personinform, target_cancer=target_cancer, chemo_cancer=chemo_cancer)  # 分析检测者的检测结果,生成药物-综合分析-对应检测项目数量的字典
 
-            if len(data_person['蛋白表达强度'].dropna()) != 0:
+            if len(data_person['蛋白表达强度'].dropna()) != 0:    #对于需要展示蛋白强度的项目，用蛋白强度的数值替换掉原来的阳性
                 protein_pers = {}
                 for i in data_person['蛋白表达强度'].dropna().index:
                     protein_pers[data_person.loc[i, '项目名称']] = data_person.loc[i, '蛋白表达强度']
@@ -298,6 +296,14 @@ def main(Expresultfiles):
                     for proteinpro in protein_pers.keys():
                         if proteinpro in metadict_all[drugkey]['druggroup']['检测项目'].tolist():
                             metadict_all[drugkey]['druggroup']['检测结果'] = protein_pers[proteinpro]
+
+            if '是' in personinform['是否插入图片'].tolist():
+                reporttemplate = u'E:\\化疗靶向库文件\\个体化报告模板_V1_插入图片版.docx'  # 读取报告模板
+                reporttemplate_2 = u'E:\\化疗靶向库文件\\个体化报告模板_V1_插入图片版_B5版本.docx'  # 读取报告模板
+            else:
+                reporttemplate = u'E:\\化疗靶向库文件\\个体化报告模板_V1.docx'  # 读取报告模板
+                reporttemplate_2 = u'E:\\化疗靶向库文件\\个体化报告模板_V1_B5版本.docx'  # 读取报告模板
+
             reportname = os.path.join(os.getcwd(), '%s_%s_%s.docx'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
             reportname2 = os.path.join(os.getcwd(), '%s_%s_%s.pdf'%(eachsample, informdict[eachsample]['姓名'], informdict[eachsample]['医院名称']))
             copyfile(reporttemplate, reportname)
@@ -309,7 +315,7 @@ def main(Expresultfiles):
             doc = add_basic_informmation(doc=doc, informdict=informdict, barcode=eachsample)  # 添加每个受试者的个人信息
             rownum_all = 0
             for drug in metadict_all.keys():
-                rownum_all+=metadict_all[drug]['minnum']
+                rownum_all += metadict_all[drug]['minnum']
             for rownum in range(0,rownum_all-1, 1):    #根据结果的行数增加表格中的行数
                 doc.Tables[1].Rows.Add()
             doc = add_metaresult(alldict=metadict_all, wapp=w, doc=doc, resdata=personinform)     #将检测结果写入到word中
